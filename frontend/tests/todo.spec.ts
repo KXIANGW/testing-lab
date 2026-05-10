@@ -87,4 +87,95 @@ test.describe('Todo Page', () => {
         await page.getByPlaceholder('Name').fill('Both Provided');
         await expect(addButton).toBeEnabled();
     });
+
+    test('Given an existing todo, When click the Complete button, Then the todo name and description should have line-through style', async ({ page }) => {
+        // arrange: mock GET to return a todo with status false (not completed)
+        const existingTodo = {
+            id: 'mock-id-1',
+            name: 'Buy milk',
+            description: 'Go to the store and buy milk',
+            status: false,
+        };
+        await page.route('**/api/v1/todos', async (route) => {
+            if (route.request().method() === 'GET') {
+                await route.fulfill({
+                    status: 200,
+                    contentType: 'application/json',
+                    body: JSON.stringify({ todos: [existingTodo] }),
+                });
+            }
+        });
+
+        await page.goto(BASE_URL);
+
+        // mock PUT and subsequent GET to return todo with status true
+        await page.route(`**/api/v1/todos/${existingTodo.id}`, async (route) => {
+            if (route.request().method() === 'PUT') {
+                await route.fulfill({
+                    status: 200,
+                    contentType: 'application/json',
+                    body: JSON.stringify({ todo: { ...existingTodo, status: true } }),
+                });
+            }
+        });
+        await page.route('**/api/v1/todos', async (route) => {
+            if (route.request().method() === 'GET') {
+                await route.fulfill({
+                    status: 200,
+                    contentType: 'application/json',
+                    body: JSON.stringify({ todos: [{ ...existingTodo, status: true }] }),
+                });
+            }
+        });
+
+        // act: click the Complete button
+        await page.getByRole('button', { name: 'Complete' }).click();
+
+        // assert: todo name and description should have line-through style
+        await expect(page.getByRole('heading', { name: 'Buy milk' })).toHaveClass(/line-through/);
+        await expect(page.getByText('Go to the store and buy milk')).toHaveClass(/line-through/);
+    });
+
+    test('Given an existing todo, When click the Delete button, Then the todo should be removed from the list', async ({ page }) => {
+        // arrange: mock GET to return a todo
+        const existingTodo = {
+            id: 'mock-id-1',
+            name: 'Buy milk',
+            description: 'Go to the store and buy milk',
+            status: false,
+        };
+        await page.route('**/api/v1/todos', async (route) => {
+            if (route.request().method() === 'GET') {
+                await route.fulfill({
+                    status: 200,
+                    contentType: 'application/json',
+                    body: JSON.stringify({ todos: [existingTodo] }),
+                });
+            }
+        });
+
+        await page.goto(BASE_URL);
+
+        // mock DELETE and subsequent GET to return empty list
+        await page.route(`**/api/v1/todos/${existingTodo.id}`, async (route) => {
+            if (route.request().method() === 'DELETE') {
+                await route.fulfill({ status: 204 });
+            }
+        });
+        await page.route('**/api/v1/todos', async (route) => {
+            if (route.request().method() === 'GET') {
+                await route.fulfill({
+                    status: 200,
+                    contentType: 'application/json',
+                    body: JSON.stringify({ todos: [] }),
+                });
+            }
+        });
+
+        // act: click the Delete button
+        await page.getByRole('button', { name: 'Delete' }).click();
+
+        // assert: todo should be removed from the list
+        await expect(page.getByRole('heading', { name: 'Buy milk' })).not.toBeVisible();
+    });
 });
